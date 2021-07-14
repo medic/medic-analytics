@@ -44,101 +44,65 @@ Run it locally in interactive mode: `npm ci && node . -i`
 
 Run tests with:
 
-```
-docker-compose build --build-arg node_version=[node version] test
-docker-compose up
-```
-
-Then in another terminal:
-
-```
-docker-compose run test grunt test
+```bash
+docker-compose build sut
+docker-compose run sut grunt test
 ```
 
-Run tests in interactive watch mode with: `docker-compose run test npm run watch`.
+Run tests in interactive watch mode with: `docker-compose run test npm run watch`
 
+Run entrypoint script tests with
 
-## Running tests against local couch and postgres databases
-
-Run tests with: `grunt test`.
-Run tests in interactive watch mode with: `npm run watch`.
-
-Environment variables required for the integration tests to run correctly:
- * `TEST_PG_URL`: postgres url. ie: `postgres://localhost:5432`
- * `TEST_COUCH_URL`: couch url. ie: `http://admin:pass@localhost:5984`
-
-NB: The integration tests destroy and re-create the given databases each time they are run.
-
-
-## Required database setup
-
-We support PostgreSQL 9.4 and greater. The user passed in the postgres url needs to have full creation rights on the given database.
-
-
-## Example usage
-
-You should probably install cht-couch2pg as a service and leave it to do its thing, as it should be able to run independently without any user input.
-
-### Installing as a service using Upstart (Ubuntu 14.4)
-
-To setup a really simple service with upstart, all you need is sudo rights on the server. You want to do something like this:
- - For now, you should still just clone this repo onto your server, check out the relevant tag, and run `npm install`. In the future this will be better!
- - `sudo` create a `/etc/init/couch2pg-example-client.conf`
- - As we are going to put passwords in this file, you want to `chown o-r /etc/init/couch2pg-example-client.conf` so that only root can read it
- - Edit this file and put something like this in it:
-
-```
-description "Service for running Example Client's couch2pg integration"
-author "Your name"
-script
-    export POSTGRESQL_URL="..."
-    export COUCHDB_URL="..."
-    exec nodejs /path/to/the/repo/index
-end script
-```
- - The service is then a standard service, e.g. `service couch2pg-example-client start`
- 
-### Installing as a service using Systemd (18.04.3 LTS [Bionic Beaver])
-
-To setup couch2pg using systemd is also pretty simple. You will need to have sudo rights to the server and then follow the steps listed below:
- 
- - Install git and clone this repo onto your server, check out the relevant tag `git checkout tag_id`, and run `npm ci`. 
- - Create a systemd unit file for your project `sudo` create `/etc/systemd/system/couch2pg-sample-client.service`
- - As we are going to put passwords in this file, you want to `sudo chmod o-r /etc/systemd/system/couch2pg-sample-client.service` so that only root can read it.
- - Edit this file and configure the couch2pg system unit. It could be something simillar to this;
- ```[Unit]
-Description=Service for running ACME couch2pg integration
-
-[Service]
-Environment='POSTGRESQL_URL=postgres://couch2pg:secret=@localhost:5432/db'
-Environment='COUCHDB_URL=https://username:pass@couchdburl/medic'
-Environment='COUCH2PG_SLEEP_MINS=720'
-Environment='COUCH2PG_DOC_LIMIT=1000'
-Environment='COUCH2PG_RETRY_COUNT=5'
-Environment='COUCH2PG_CHANGES_LIMIT=1000'
-
-ExecStart=/usr/bin/npm run cht-couch2pg --prefix /path/to/cht-couch2pg/index.js
-
-ExecStartPost= add monitoring script command to run after service starts.
-ExecStopPost= add monitoring script to run if service stops 
-# Required on some systems
-WorkingDirectory=/path/to/cht-couch2pg/source
-Restart=always
-# Restart service after 10 seconds if couch2pg service crashes
-RestartSec=10
-# Output to syslog
-StandardOutput=syslog
-StandardError=syslog
-SyslogIdentifier=couch2pg-acme
-
-[Install]
-WantedBy=multi-user.target
+```bash
+docker-compose run sut ./tests/bash/bats/bin/bats  /app/tests/bash/test.bats
 ```
 
- - Reload systemd settings `systemctl daemon-reload`
- - Start the service `sudo service couch2pg-sample-client start`
- - If all goes well the service should start smoothly.
- - You can check the service logs using `journalctl` like this `journalctl -u couch2pg-sample-client --since today`
+### Running  the docker image
+
+You can run the [docker image](https://hub.docker.com/r/medicmobile/cht-couch2pg) avaialable on docker hub.  You will need to provide the required environment variables.  A sample docker-compose snipet is shown below. This image can work with the [cht-postgres](https://hub.docker.com/r/medicmobile/cht-postgres) docker image also available on dockerhub.
+
+```yaml
+
+  couch2pg:
+        container_name: cht_couch2pg
+        image: medicmobile/cht-couch2pg:test-rc.1
+        environment:
+           COUCHDB_URL: "http://${COUCHDB_USER:-cht}:${COUCHDB_PASSWORD:-cht_password}@medic-api:5988/medic"
+           COUCH2PG_SLEEP_MINS: '720'
+           COUCH2PG_DOC_LIMIT: '1000'
+           COUCH2PG_RETRY_COUNT: '5'
+           POSTGRES_DB: cht-postgres
+           COUCH2PG_CHANGES_LIMIT: 100
+           POSTGRES_USER_NAME: cht_couch2pg
+           POSTGRES_DB_NAME: cht
+           POSTGRES_PASSWORD: couch2pg_password
+           API_URL: http://medic-api:5988
+        depends_on:
+          - cht-postgres
+  cht-postgres:
+        container_name: cht-postgres
+        image: medicmobile/cht-postgres:release-postgres13-rc.1
+        environment:
+            POSTGRES_DB: cht
+            POSTGRES_USER: cht
+            POSTGRES_PASSWORD: cht_password
+            COUCH2PG_USER: cht_couch2pg
+            COUCH2PG_USER_PASSWORD: couch2pg_password
+            DB_OWNER_GROUP: cht_analytics
+        volumes:
+            - cht-postgres-data:/var/lib/postgresql/data
+        networks:
+          - cht-net
+
+volumes:
+  cht-postgres-data:
+    name: cht-postgres-data
+
+networks:
+  cht-net:
+   name: cht-net
+
+```
 
 
 ## Known issues
@@ -147,8 +111,8 @@ WantedBy=multi-user.target
 
 An SQL migration file was changed in version 3.2.0. This made upgrades from 3.1.x impossible, with the process crashing upon startup after the upgrade. See more [details about the error](https://github.com/medic/cht-couch2pg/issues/78).
 
-This was fixed in version 3.2.1, by reverting the changes made to the migration file. 
-Fresh installations of 3.2.0 should execute this SQL before upgrading: 
+This was fixed in version 3.2.1, by reverting the changes made to the migration file.
+Fresh installations of 3.2.0 should execute this SQL before upgrading:
 
 ```sql
 UPDATE xmlforms_migrations

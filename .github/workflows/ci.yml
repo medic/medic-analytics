@@ -25,7 +25,10 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Build
-        run: docker-compose build --build-arg node_version=${{ matrix.node-version }} test
+        run: docker-compose build --build-arg node_version=${{ matrix.node-version }} sut
 
-      - name: Run tests
-        run: docker-compose run test grunt test
+      - name: Run npm tests
+        run: docker-compose run sut grunt test
+
+      - name: Run entrypoint script tests
+        run: docker-compose run sut ./tests/bash/bats/bin/bats  /app/tests/bash/test.bats

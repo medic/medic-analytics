@@ -19,6 +19,8 @@ services:
     build:
       context: .
       target: test-couch2pg
+      args:
+        node_version: '10'
     volumes:
       - ./libs:/usr/app/libs
       - ./tests:/usr/app/tests
